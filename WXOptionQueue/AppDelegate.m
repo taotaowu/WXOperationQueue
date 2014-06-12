@@ -20,7 +20,7 @@
     MyTableViewControl *tableViewControl = [[MyTableViewControl alloc] initWithStyle:UITableViewStylePlain];
     UINavigationController *navControl = [[UINavigationController alloc] initWithRootViewController:tableViewControl];
 //    self.window.rootViewController = navControl;
-    self.window.rootViewController = tableViewControl;
+    self.window.rootViewController = navControl;
     [self.window makeKeyAndVisible];
     return YES;
 }
