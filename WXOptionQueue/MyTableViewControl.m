@@ -23,6 +23,19 @@
     return self;
 }
 
+#pragma mark - Lazy instantiation 
+// 2 
+- (NSDictionary *)photos
+{
+    if(!_photos) 
+    {
+        NSURL *dataSourceURL = [NSURL URLWithString:kDatasourceURLString];
+        _photos = [NSDictionary dictionaryWithContentsOfURL:dataSourceURL];
+    }
+    return _photos;
+}
+
+
 - (void)viewDidLoad
 {
     [super viewDidLoad];
