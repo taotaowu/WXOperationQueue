@@ -35,6 +35,14 @@
     return _photos;
 }
 
+
+- (PendingOptions *)pendingOperations {
+    if (!_pendingOperations) {
+        _pendingOperations = [[PendingOptions alloc] init];
+    }
+    return _pendingOperations;
+}
+
 #pragma mark view lifecycle
 - (void)viewDidLoad
 {
