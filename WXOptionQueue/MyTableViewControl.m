@@ -102,6 +102,7 @@
 
 - (void)didReceiveMemoryWarning
 {
+    [self cancelAllOperations];
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
 }
@@ -155,29 +156,19 @@
     }else
     {
         //5
-        [((UIActivityIndicatorView*)cell.accessoryView) stopAnimating];
+        [((UIActivityIndicatorView*)cell.accessoryView) startAnimating];
         cell.imageView.image = [UIImage imageNamed:@"Placeholder.png"];
         cell.textLabel.text = @"";
         [self startOperationForPhotosRecord:aRecord atIndexPath:indexPath];
     }
-    
-    // 8
-//    NSString *rowKey = [[self.photos allKeys] objectAtIndex:indexPath.row];
-//    NSURL *imageURL = [NSURL URLWithString:[self.photos objectForKey:rowKey]];
-//    NSData *imageData = [NSData dataWithContentsOfURL:imageURL];
-//    UIImage *image = nil;
-    
-    // 9
-//    if (imageData) {
-//        UIImage *unfiltered_image = [UIImage imageWithData:imageData];
-//        image = [self applySepiaFilterToImage:unfiltered_image];
-//    }
-    
-//    cell.textLabel.text = rowKey;
-//    cell.imageView.image = image;
+    if(!tableView.dragging && !tableView.decelerating)
+    {
+        [self startOperationForPhotosRecord:aRecord atIndexPath:indexPath];
+    }
     
     return cell;
 }
+//private method
 //1
 - (void) startOperationForPhotosRecord:(PhotoRecord*)aRecord atIndexPath:(NSIndexPath*)indexPath
 {
@@ -260,11 +251,104 @@
     [self.pendingOperations.filtrationsInProgress removeObjectForKey:indexPath];
 }
 
+#pragma mark -
+#pragma mark - UIScrollView delegate
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+    //
+    [self suspendAllOperations];
+}
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    if(!decelerate)
+    {
+        //2
+        [self loadImageForOnScreenCells];
+        [self resumeAllOperations];
+    }
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+    //3
+    [self loadImageForOnScreenCells];
+    [self resumeAllOperations];
+}
+
+#pragma mark -
+#pragma mark- Cancelling , suspending, resuming queues/ operations
+- (void)suspendAllOperations
+{
+    [self.pendingOperations.downloadQueue setSuspended:YES];
+    [self.pendingOperations.filtrationQueue setSuspended:YES];
+    
+}
+
+- (void)resumeAllOperations
+{
+    [self.pendingOperations.downloadQueue setSuspended:NO];
+    [self.pendingOperations.filtrationQueue setSuspended:NO];
+}
+
+- (void)cancelAllOperations
+{
+    [self.pendingOperations.downloadQueue cancelAllOperations];
+    [self.pendingOperations.filtrationQueue cancelAllOperations];
+}
+
+- (void)loadImageForOnScreenCells
+{
+    //1
+    NSSet *visibleRows = [NSSet setWithArray:[self.tableView indexPathsForVisibleRows]];
+    //2
+    NSMutableSet *pendingOperations = [NSMutableSet setWithArray:[self.pendingOperations.downloadsInProgress allKeys]];
+    [pendingOperations addObjectsFromArray:[self.pendingOperations.filtrationsInProgress allKeys]];
+    NSMutableSet *toBeCancelled = [pendingOperations mutableCopy];
+    NSMutableSet *toBeStarted = [visibleRows mutableCopy];
+    //3
+    [toBeStarted minusSet:pendingOperations];
+    //4
+    [toBeCancelled minusSet:visibleRows];
+    // 5
+    for (NSIndexPath *anIndexPath in toBeCancelled) {
+        
+        ImageDownloader *pendingDownload = [self.pendingOperations.downloadsInProgress objectForKey:anIndexPath];
+        [pendingDownload cancel];
+        [self.pendingOperations.downloadsInProgress removeObjectForKey:anIndexPath];
+        
+        ImageFiltration *pendingFiltration = [self.pendingOperations.filtrationsInProgress objectForKey:anIndexPath];
+        [pendingFiltration cancel];
+        [self.pendingOperations.filtrationsInProgress removeObjectForKey:anIndexPath];
+    }
+    toBeCancelled = nil;
+    
+    // 6
+    for (NSIndexPath *anIndexPath in toBeStarted) {
+        
+        PhotoRecord *recordToProcess = [self.photos objectAtIndex:anIndexPath.row];
+        [self startOperationForPhotosRecord:recordToProcess atIndexPath:anIndexPath];
+    }
+    toBeStarted = nil;
+    
+    
+}
+
+
 
 - (UIStatusBarStyle)preferredStatusBarStyle
 {
     NSLog(@"change status bar style");
     return UIStatusBarStyleLightContent;
 }
+
+
+
+
+
+
+
+
+
 
 @end
