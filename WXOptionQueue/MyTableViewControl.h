@@ -19,7 +19,7 @@
 
 @interface MyTableViewControl : UITableViewController<ImageDownloaderDelegate,ImageFiltrationDelegate>
 
-@property (nonatomic, strong)NSDictionary *photos;
+@property (nonatomic, strong)NSMutableArray *photos;
 //5
 @property (nonatomic, strong) PendingOptions *pendingOperations;
 

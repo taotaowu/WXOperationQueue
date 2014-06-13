@@ -7,12 +7,14 @@
 //
 
 #import "MyTableViewControl.h"
+#import <AFNetworking.h>
 
 @interface MyTableViewControl ()
 
 @end
 
 @implementation MyTableViewControl
+@synthesize pendingOperations = _pendingOperations;
 
 - (id)initWithStyle:(UITableViewStyle)style
 {
@@ -25,12 +27,52 @@
 
 #pragma mark - Lazy instantiation 
 // 2 
-- (NSDictionary *)photos
+- (NSMutableArray *)photos
 {
     if(!_photos) 
     {
+        //1
         NSURL *dataSourceURL = [NSURL URLWithString:kDatasourceURLString];
-        _photos = [NSDictionary dictionaryWithContentsOfURL:dataSourceURL];
+        NSURLRequest *request = [[NSURLRequest alloc] initWithURL:dataSourceURL];
+//        _photos = [NSDictionary dictionaryWithContentsOfURL:dataSourceURL];
+        //2
+        AFHTTPRequestOperation *dataSource_download_operation = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+        //3
+        [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
+        //4
+        [dataSource_download_operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject)
+        {
+            //5
+            NSData *dataSource_data = (NSData*)responseObject;
+            CFPropertyListRef plist = CFPropertyListCreateFromXMLData(kCFAllocatorDefault, (__bridge CFDataRef)dataSource_data, kCFPropertyListImmutable, NULL);
+            NSDictionary *datasourc_dictionary = (__bridge  NSDictionary*)plist;
+            //6
+            NSMutableArray *records = [NSMutableArray array];
+            for(NSString *key in datasourc_dictionary)
+            {
+                PhotoRecord *record = [[PhotoRecord alloc] init];
+                record.URL = [NSURL URLWithString:[datasourc_dictionary objectForKey:key]];
+                record.name = key;
+                [records addObject:record];
+                record = nil;
+            }
+            //7
+            self.photos = records;
+            CFRelease(plist);
+            [self.tableView reloadData];
+            [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
+        } failure:^(AFHTTPRequestOperation *operation, NSError *error)
+        {
+            //8
+            //connection error message
+            UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Oops" message:error.localizedDescription delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil, nil];
+            [alert show];
+            alert = nil;
+            [[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
+        }];
+        //9
+        [self.pendingOperations.downloadQueue addOperation:dataSource_download_operation];
+        
     }
     return _photos;
 }
@@ -92,52 +134,96 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:kCellIdentifier];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        //1
+        UIActivityIndicatorView *activityIndicatorView = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+        cell.accessoryView = activityIndicatorView;
+    }
+    //2
+    PhotoRecord *aRecord = [self.photos objectAtIndex:indexPath.row];
+    //3
+    if(aRecord.hasImage)
+    {
+        [((UIActivityIndicatorView*)cell.accessoryView) stopAnimating];
+        cell.imageView.image = aRecord.image;
+        cell.textLabel.text = aRecord.name;
+    }else if(aRecord.isFailed)
+    {
+        //4
+        [((UIActivityIndicatorView*)cell.accessoryView) stopAnimating];
+        cell.imageView.image = [UIImage imageNamed:@"Failed.png"];
+        cell.textLabel.text = @"Fail to load";
+    }else
+    {
+        //5
+        [((UIActivityIndicatorView*)cell.accessoryView) stopAnimating];
+        cell.imageView.image = [UIImage imageNamed:@"Placeholder.png"];
+        cell.textLabel.text = @"";
+        [self startOperationForPhotosRecord:aRecord atIndexPath:indexPath];
     }
     
     // 8
-    NSString *rowKey = [[self.photos allKeys] objectAtIndex:indexPath.row];
-    NSURL *imageURL = [NSURL URLWithString:[self.photos objectForKey:rowKey]];
-    NSData *imageData = [NSData dataWithContentsOfURL:imageURL];
-    UIImage *image = nil;
+//    NSString *rowKey = [[self.photos allKeys] objectAtIndex:indexPath.row];
+//    NSURL *imageURL = [NSURL URLWithString:[self.photos objectForKey:rowKey]];
+//    NSData *imageData = [NSData dataWithContentsOfURL:imageURL];
+//    UIImage *image = nil;
     
     // 9
-    if (imageData) {
-        UIImage *unfiltered_image = [UIImage imageWithData:imageData];
-        image = [self applySepiaFilterToImage:unfiltered_image];
-    }
+//    if (imageData) {
+//        UIImage *unfiltered_image = [UIImage imageWithData:imageData];
+//        image = [self applySepiaFilterToImage:unfiltered_image];
+//    }
     
-    cell.textLabel.text = rowKey;
-    cell.imageView.image = image;
+//    cell.textLabel.text = rowKey;
+//    cell.imageView.image = image;
     
     return cell;
 }
+//1
+- (void) startOperationForPhotosRecord:(PhotoRecord*)aRecord atIndexPath:(NSIndexPath*)indexPath
+{
+    //2
+    if(!aRecord.hasImage)
+    {
+        //3
+        [self startImageDownloadingForeRecord:aRecord atIndexPath:indexPath];
+    }
+    if(!aRecord.isFailed)
+    {
+        [self startImageFiltrationForRecord:aRecord atIndexPath:indexPath];
+    }
+}
 
-//- (UITableViewCell*)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
-//{
-//    static NSString *kCellIdentifier = @"cellIdentifier";
-//    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:kCellIdentifier];
-//    if (!cell)
-//    {
-//        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:kCellIdentifier];
-//        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-//    }
-//    //8
-//    NSString *rowKey = [[self.photos allKeys] objectAtIndex:indexPath.row];
-//    NSURL *imageUrl = [NSURL URLWithString:[self.photos objectForKey:rowKey]];
-//    NSData *imageData = [NSData dataWithContentsOfURL:imageUrl];
-//    UIImage *image = nil;
-//    
-//    //9
-//    if(imageData)
-//    {
-//        UIImage *unfilteredImage = [UIImage imageWithData:imageData];
-//        image = [self applyFilterToImage:unfilteredImage];
-//    }
-//    cell.textLabel.text = rowKey;
-//    cell.imageView.image = image;
-//    
-//    return cell;
-//}
+- (void)startImageDownloadingForeRecord:(PhotoRecord*)record atIndexPath:(NSIndexPath*)indexPath
+{
+    //1First, check for the particular indexPath to see if there is already an operation in downloadsInProgress for it. If so, ignore it.
+    if(![self.pendingOperations.downloadsInProgress.allKeys containsObject:indexPath])
+    {
+        //2 start downloading If not, create an instance of ImageDownloader by using the designated initializer, and set ListViewController as the delegate. Pass in the appropriate indexPath and a pointer to the instance of PhotoRecord, and then add it to the download queue. You also add it to downloadsInProgress to help keep track of things.
+        ImageDownloader *imageDownloader = [[ImageDownloader alloc] initWithPhotoRecord:record atIndexPath:indexPath delegate:self];
+        [self.pendingOperations.downloadsInProgress setObject:imageDownloader forKey:indexPath];
+        [self.pendingOperations.downloadQueue addOperation:imageDownloader];
+    }
+}
+- (void)startImageFiltrationForRecord:(PhotoRecord*)record atIndexPath:(NSIndexPath*)indexPath
+{
+    //3Similarly, check to see if there is any filtering operations going on for the particular indexPath.
+    if(![self.pendingOperations.filtrationsInProgress.allKeys containsObject:indexPath])
+    {
+        //4 Start filtration If not, start one by using the designated initializer.
+
+        ImageFiltration *imageFiltration = [[ImageFiltration alloc] initWithPhotoRecord:record atIndexPath:indexPath delegate:self];
+        //5 This one is a little tricky. You first must check to see if this particular indexPath has a pending download; if so, you make this filtering operation dependent on that. Otherwise, you don’t need dependency.
+        ImageDownloader *dependency = [self.pendingOperations.downloadsInProgress objectForKey:indexPath];
+        if(dependency)
+        {
+            [imageFiltration addDependency:dependency];
+        }
+        [self.pendingOperations.filtrationsInProgress setObject:imageFiltration forKey:indexPath];
+        [self.pendingOperations.filtrationQueue addOperation:imageFiltration];
+    }
+}
+
+
 #pragma mark - image filteration
 //10
 - (UIImage*) applySepiaFilterToImage:(UIImage*)unfilterImage
@@ -153,7 +239,26 @@
     return sepiaImage;
     
 }
-
+#pragma mark implement protocol
+- (void)imageDownloaderDidFinish:(ImageDownloader *)downloader
+{
+    //1
+    NSIndexPath *indexPath = downloader.indexPathInTableView;
+    //2
+    PhotoRecord *theRecord = downloader.photoRecord;
+    //3
+    [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObject:indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    //4
+    [self.pendingOperations.downloadsInProgress removeObjectForKey:indexPath];
+    
+}
+- (void)imageFiltrationDidFinish:(ImageFiltration *)filtration
+{
+    NSIndexPath *indexPath = filtration.indexPathInTableView;
+    PhotoRecord *theRecord = filtration.photoRecord;
+    [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObject:indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [self.pendingOperations.filtrationsInProgress removeObjectForKey:indexPath];
+}
 
 
 - (UIStatusBarStyle)preferredStatusBarStyle
